@@ -1,0 +1,1457 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>俄羅斯方塊 | TETRIS</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+    :root {
+      --bg: #0a0a1a;
+      --panel: #10102a;
+      --border: #2a2a6a;
+      --glow-cyan: #00f5ff;
+      --glow-purple: #bf00ff;
+      --glow-gold: #ffd700;
+      --glow-red: #ff4444;
+      --text: #e0e0ff;
+      --dim: #5a5a9a;
+      --cell: 30px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Press Start 2P', monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(1px 1px at 10% 15%, #fff 0%, transparent 100%),
+        radial-gradient(1px 1px at 25% 60%, #fff 0%, transparent 100%),
+        radial-gradient(1px 1px at 40% 30%, #aaf 0%, transparent 100%),
+        radial-gradient(1px 1px at 55% 80%, #fff 0%, transparent 100%),
+        radial-gradient(1px 1px at 70% 10%, #aff 0%, transparent 100%),
+        radial-gradient(1px 1px at 80% 50%, #fff 0%, transparent 100%),
+        radial-gradient(1px 1px at 90% 25%, #fff 0%, transparent 100%),
+        radial-gradient(1px 1px at 15% 90%, #fff 0%, transparent 100%),
+        radial-gradient(1px 1px at 60% 45%, #aaf 0%, transparent 100%),
+        radial-gradient(1px 1px at 35% 70%, #fff 0%, transparent 100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      letter-spacing: 6px;
+      color: var(--glow-cyan);
+      text-shadow: 0 0 10px var(--glow-cyan), 0 0 30px var(--glow-cyan);
+      margin-bottom: 20px;
+      position: relative;
+      z-index: 1;
+    }
+
+    #game-wrapper {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+      position: relative;
+      z-index: 1;
+    }
+
+    #canvas-wrapper {
+      border: 3px solid var(--glow-cyan);
+      box-shadow: 0 0 15px var(--glow-cyan), inset 0 0 15px rgba(0,245,255,0.05);
+      position: relative;
+      image-rendering: pixelated;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    #canvas-wrapper.combo-active {
+      border-color: var(--glow-gold);
+      box-shadow: 0 0 25px var(--glow-gold), 0 0 50px var(--glow-gold),
+                  inset 0 0 20px rgba(255,215,0,0.1);
+      animation: comboPulse 0.5s ease-in-out infinite alternate;
+    }
+
+    #canvas-wrapper.bomb-active {
+      border-color: var(--glow-red);
+      box-shadow: 0 0 30px var(--glow-red), 0 0 70px rgba(255,68,68,0.5),
+                  inset 0 0 20px rgba(255,68,68,0.1);
+      animation: bombPulse 0.3s ease-in-out infinite alternate;
+    }
+
+    @keyframes comboPulse {
+      from { box-shadow: 0 0 20px var(--glow-gold); }
+      to   { box-shadow: 0 0 60px var(--glow-gold), 0 0 100px rgba(255,180,0,0.4); }
+    }
+
+    @keyframes bombPulse {
+      from { box-shadow: 0 0 20px var(--glow-red); }
+      to   { box-shadow: 0 0 70px var(--glow-red), 0 0 120px rgba(255,68,68,0.5); }
+    }
+
+    canvas {
+      display: block;
+      background: #050510;
+      image-rendering: pixelated;
+    }
+
+    #side-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 160px;
+    }
+
+    .panel-box {
+      background: var(--panel);
+      border: 2px solid var(--border);
+      padding: 12px;
+      box-shadow: 0 0 8px rgba(42,42,106,0.8);
+    }
+
+    .panel-label {
+      font-size: 0.45rem;
+      color: var(--dim);
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+    }
+
+    .panel-value {
+      font-size: 0.75rem;
+      color: var(--glow-cyan);
+      text-shadow: 0 0 8px var(--glow-cyan);
+      word-break: break-all;
+    }
+
+    /* 連擊面板 */
+    #combo-box { transition: opacity 0.3s; }
+    #combo-box.hidden { opacity: 0; pointer-events: none; }
+
+    #combo-value {
+      font-size: 1rem;
+      color: var(--glow-gold);
+      text-shadow: 0 0 12px var(--glow-gold), 0 0 25px var(--glow-gold);
+    }
+    #combo-label-sub {
+      font-size: 0.38rem;
+      color: var(--glow-gold);
+      opacity: 0.7;
+      margin-top: 4px;
+    }
+    #bonus-bar-wrap {
+      height: 6px;
+      background: rgba(255,215,0,0.15);
+      border: 1px solid var(--glow-gold);
+      margin-top: 6px;
+      overflow: hidden;
+    }
+    #bonus-bar {
+      height: 100%;
+      background: var(--glow-gold);
+      box-shadow: 0 0 6px var(--glow-gold);
+      width: 100%;
+    }
+
+    @keyframes comboBounce {
+      0%   { transform: scale(1.5); }
+      60%  { transform: scale(0.9); }
+      100% { transform: scale(1); }
+    }
+
+    /* 道具欄 */
+    #item-box { transition: opacity 0.3s; }
+    #item-box.hidden { opacity: 0; pointer-events: none; }
+    #item-icon {
+      font-size: 1.4rem;
+      text-align: center;
+      animation: itemPop 0.5s ease;
+    }
+    #item-desc {
+      font-size: 0.38rem;
+      color: var(--glow-red);
+      text-shadow: 0 0 8px var(--glow-red);
+      margin-top: 4px;
+      text-align: center;
+    }
+    @keyframes itemPop {
+      0%   { transform: scale(0); }
+      70%  { transform: scale(1.3); }
+      100% { transform: scale(1); }
+    }
+
+    #next-canvas {
+      display: block;
+      margin: 4px auto 0;
+      image-rendering: pixelated;
+    }
+
+    .btn {
+      background: transparent;
+      border: 2px solid var(--glow-purple);
+      color: var(--glow-purple);
+      font-family: 'Press Start 2P', monospace;
+      font-size: 0.5rem;
+      padding: 10px 6px;
+      cursor: pointer;
+      text-shadow: 0 0 8px var(--glow-purple);
+      box-shadow: 0 0 8px var(--glow-purple);
+      width: 100%;
+      letter-spacing: 1px;
+      transition: background 0.1s, color 0.1s;
+    }
+    .btn:hover { background: var(--glow-purple); color: #fff; }
+    .btn:active { transform: scale(0.97); }
+
+    #mute-btn {
+      border-color: var(--dim);
+      color: var(--dim);
+      text-shadow: none;
+      box-shadow: none;
+      font-size: 0.65rem;
+      padding: 8px 6px;
+    }
+    #mute-btn:hover { background: var(--dim); color: #fff; }
+
+    #controls {
+      font-size: 0.38rem;
+      color: var(--dim);
+      line-height: 2;
+      letter-spacing: 1px;
+    }
+    #controls span { color: var(--text); }
+
+    /* 覆蓋層 */
+    #overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(5,5,20,0.88);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      z-index: 10;
+    }
+    #overlay.hidden { display: none; }
+    #overlay-title {
+      font-size: 0.9rem;
+      text-align: center;
+      color: var(--glow-cyan);
+      text-shadow: 0 0 12px var(--glow-cyan);
+      line-height: 2.2;
+    }
+    #overlay-score {
+      font-size: 0.6rem;
+      color: var(--glow-purple);
+      text-shadow: 0 0 10px var(--glow-purple);
+    }
+    #overlay-btn { font-size: 0.55rem; padding: 12px 20px; }
+
+    /* 中央大字提示 */
+    #center-popup {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(1);
+      font-size: 0.9rem;
+      color: var(--glow-gold);
+      text-shadow: 0 0 16px var(--glow-gold), 0 0 40px var(--glow-gold);
+      pointer-events: none;
+      opacity: 0;
+      z-index: 9;
+      text-align: center;
+      white-space: nowrap;
+      transition: none;
+    }
+    #center-popup.show {
+      animation: popupAnim 1.4s ease forwards;
+    }
+    @keyframes popupAnim {
+      0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+      20%  { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+      50%  { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
+      80%  { opacity: 1; transform: translate(-50%, -60%) scale(1.0); }
+      100% { opacity: 0; transform: translate(-50%, -80%) scale(0.9); }
+    }
+
+    /* 行動裝置觸控 */
+    #touch-controls {
+      display: none;
+      gap: 8px;
+      margin-top: 14px;
+      z-index: 1;
+      position: relative;
+    }
+    .touch-btn {
+      background: var(--panel);
+      border: 2px solid var(--border);
+      color: var(--text);
+      font-family: 'Press Start 2P', monospace;
+      font-size: 1rem;
+      width: 54px;
+      height: 54px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .touch-btn:active { background: var(--border); }
+
+    @media (max-width: 700px) {
+      :root { --cell: 22px; }
+      h1 { font-size: 0.85rem; }
+      #side-panel { width: 110px; }
+      #touch-controls { display: flex; flex-wrap: wrap; justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+
+<h1>TETRIS</h1>
+
+<div id="game-wrapper">
+  <div id="canvas-wrapper">
+    <canvas id="gameCanvas"></canvas>
+    <div id="center-popup"></div>
+    <div id="overlay">
+      <div id="overlay-title">TETRIS<br>俄羅斯方塊</div>
+      <div id="overlay-score"></div>
+      <button class="btn" id="overlay-btn" onclick="startGame()">▶ PLAY</button>
+    </div>
+  </div>
+
+  <div id="side-panel">
+    <div class="panel-box">
+      <div class="panel-label">── SCORE ──</div>
+      <div class="panel-value" id="score-display">0</div>
+    </div>
+    <div class="panel-box">
+      <div class="panel-label">── LEVEL ──</div>
+      <div class="panel-value" id="level-display">1</div>
+    </div>
+    <div class="panel-box">
+      <div class="panel-label">── LINES ──</div>
+      <div class="panel-value" id="lines-display">0</div>
+    </div>
+
+    <!-- 連擊面板 -->
+    <div class="panel-box hidden" id="combo-box">
+      <div class="panel-label">── COMBO ──</div>
+      <div class="panel-value" id="combo-value">x1</div>
+      <div id="combo-label-sub">BONUS TIME!</div>
+      <div id="bonus-bar-wrap"><div id="bonus-bar"></div></div>
+    </div>
+
+    <!-- 道具欄 -->
+    <div class="panel-box hidden" id="item-box">
+      <div class="panel-label">── ITEM ──</div>
+      <div id="item-icon">💣</div>
+      <div id="item-desc">BOMB!</div>
+    </div>
+
+    <div class="panel-box">
+      <div class="panel-label">── NEXT ──</div>
+      <canvas id="next-canvas" width="100" height="80"></canvas>
+    </div>
+    <div class="panel-box">
+      <button class="btn" id="pause-btn" onclick="togglePause()">⏸ PAUSE</button>
+    </div>
+    <div class="panel-box">
+      <button class="btn" id="mute-btn" onclick="toggleMute()">🔊 SOUND</button>
+    </div>
+    <div class="panel-box" id="controls">
+      <span>←→</span> 移動<br>
+      <span>↑</span> 旋轉<br>
+      <span>↓</span> 加速<br>
+      <span>Space</span> 落下<br>
+      <span>P</span> 暫停<br>
+      <span>M</span> 靜音
+    </div>
+  </div>
+</div>
+
+<div id="touch-controls">
+  <div style="display:flex;gap:8px;">
+    <button class="touch-btn" id="btn-left">◀</button>
+    <button class="touch-btn" id="btn-rotate">↻</button>
+    <button class="touch-btn" id="btn-right">▶</button>
+  </div>
+  <div style="display:flex;gap:8px;justify-content:center;width:100%;">
+    <button class="touch-btn" id="btn-down">▼</button>
+    <button class="touch-btn" id="btn-drop">⬇</button>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════
+//  AudioContext 單例
+// ════════════════════════════════════════════
+let _ac = null;
+function ac() {
+  if (!_ac) _ac = new (window.AudioContext || window.webkitAudioContext)();
+  if (_ac.state === 'suspended') _ac.resume();
+  return _ac;
+}
+
+let muted = false;
+
+// ════════════════════════════════════════════
+//  基礎音效合成
+// ════════════════════════════════════════════
+function playNote(freq, type, startTime, duration, vol, freqEnd) {
+  if (muted) return;
+  const ctx = ac();
+  const osc  = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, startTime);
+  if (freqEnd != null)
+    osc.frequency.exponentialRampToValueAtTime(Math.max(freqEnd, 20), startTime + duration);
+  gain.gain.setValueAtTime(vol, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+  osc.start(startTime);
+  osc.stop(startTime + duration + 0.01);
+}
+
+// 落地音效
+function sfxLand() {
+  if (muted) return;
+  const t = ac().currentTime;
+  playNote(200, 'sawtooth', t,        0.07, 0.35, 55);
+  playNote(700, 'square',   t,        0.04, 0.12, 700);
+  playNote(400, 'triangle', t + 0.03, 0.05, 0.2,  200);
+}
+
+// 消行音效（與落地區隔，更響亮上揚）
+function sfxClearLines(n) {
+  if (muted) return;
+  const t = ac().currentTime;
+  // 掃頻 sweep
+  playNote(300,  'square',   t,       0.06, 0.3, 600);
+  playNote(600,  'square',   t+0.06,  0.07, 0.35, 1200);
+  playNote(1200, 'sawtooth', t+0.13,  0.1,  0.4,  1800);
+  if (n >= 2) {
+    playNote(880,  'square', t+0.22, 0.08, 0.3, 1760);
+  }
+  if (n === 4) {
+    // TETRIS 四行特效：昂揚音階
+    const freqs = [523, 659, 784, 1047, 1319, 1568];
+    freqs.forEach((f, i) => playNote(f, 'square', t + 0.3 + i * 0.07, 0.1, 0.35, f));
+  }
+}
+
+// 連擊音效
+function sfxCombo(count) {
+  if (muted) return;
+  const t = ac().currentTime;
+  const scale = [523, 587, 659, 698, 784, 880, 988, 1047];
+  const idx = Math.min(count - 1, scale.length - 1);
+  for (let i = 0; i <= Math.min(idx, 3); i++)
+    playNote(scale[i], 'square', t + i * 0.07, 0.1, 0.25, scale[i]);
+  playNote(scale[idx], 'square', t + 0.28, 0.18, 0.4, scale[idx] * 1.2);
+}
+
+// 旋轉音效
+function sfxRotate() {
+  if (muted) return;
+  playNote(320, 'square', ac().currentTime, 0.04, 0.1, 480);
+}
+
+// 移動音效
+function sfxMove() {
+  if (muted) return;
+  playNote(220, 'square', ac().currentTime, 0.025, 0.07, 220);
+}
+
+// 硬落下音效
+function sfxHardDrop() {
+  if (muted) return;
+  const t = ac().currentTime;
+  playNote(300, 'sawtooth', t,      0.05, 0.4, 60);
+  playNote(800, 'square',   t+0.03, 0.04, 0.2, 800);
+}
+
+// 道具取得音效（歡快叮噹）
+function sfxItemGet() {
+  if (muted) return;
+  const t = ac().currentTime;
+  [784, 988, 1175, 1568].forEach((f, i) =>
+    playNote(f, 'square', t + i * 0.08, 0.1, 0.3, f)
+  );
+}
+
+// 炸彈爆炸音效（三層撞擊）
+function sfxBombExplode() {
+  if (muted) return;
+  const t = ac().currentTime;
+  // 低頻爆炸轟鳴
+  playNote(80,  'sawtooth', t,       0.6,  0.6, 20);
+  playNote(60,  'triangle', t,       0.8,  0.5, 20);
+  // 中頻爆裂
+  playNote(200, 'sawtooth', t,       0.25, 0.5, 40);
+  playNote(350, 'square',   t,       0.15, 0.4, 50);
+  // 高頻碎裂
+  playNote(1200,'sawtooth', t+0.05,  0.15, 0.3, 200);
+  playNote(2000,'square',   t+0.03,  0.1,  0.2, 400);
+  // 餘震
+  playNote(100, 'sawtooth', t+0.3,   0.4,  0.3, 25);
+}
+
+// 遊戲結束音效
+function sfxGameOver() {
+  if (muted) return;
+  const t = ac().currentTime;
+  [440, 370, 311, 262, 196].forEach((f, i) =>
+    playNote(f, 'sawtooth', t + i * 0.18, 0.28, 0.3, f * 0.9)
+  );
+}
+
+// ════════════════════════════════════════════
+//  背景音樂 — OfflineAudioContext 預渲染 Buffer Loop
+//  旋律：Korobeiniki（A 型），不會卡針
+// ════════════════════════════════════════════
+let bgmSource   = null;
+let bgmBuffer   = null;
+let bgmPlaying  = false;
+let bgmGain     = null;
+
+// 音符序列 [freq_Hz, beats]，0 = 休止符
+const MELODY = [
+  [659,1],[494,0.5],[523,0.5],[587,1],[523,0.5],[494,0.5],
+  [440,1],[440,0.5],[523,0.5],[659,1],[587,0.5],[523,0.5],
+  [494,1.5],[523,0.5],[587,1],[659,1],
+  [523,1],[440,1],[440,1.5],[0,0.5],
+
+  [0,0.5],[587,0.75],[0,0.25],[698,1],[880,1],[784,0.5],[698,0.5],
+  [659,1.5],[523,0.5],[659,1],[587,0.5],[523,0.5],
+  [494,1],[494,0.5],[523,0.5],[587,1],[659,1],
+  [523,1],[440,1],[440,2],
+
+  // 低聲部重複一次增變化
+  [659,0.5],[587,0.5],[494,0.5],[523,0.5],[587,1],[523,0.5],[494,0.5],
+  [440,1],[440,0.5],[523,0.5],[659,1],[587,0.5],[523,0.5],
+  [494,1.5],[523,0.5],[587,1],[659,1],
+  [523,1],[440,1],[440,2],
+];
+
+const BPM  = 158;
+const BEAT = 60 / BPM;      // 秒/拍
+
+// 預渲染 BGM 為 AudioBuffer（在 OfflineContext 中合成，主執行緒不阻塞）
+async function buildBGMBuffer() {
+  const totalBeats = MELODY.reduce((s,[,b]) => s + b, 0);
+  const totalSec   = totalBeats * BEAT + 0.5; // 加一點尾音時間
+  const SR = 44100;
+  const offline = new OfflineAudioContext(1, Math.ceil(totalSec * SR), SR);
+
+  let t = 0.02;
+  for (const [freq, beats] of MELODY) {
+    const dur = beats * BEAT;
+    if (freq > 0) {
+      const noteDur = dur * 0.82;
+
+      // 主旋律 square
+      const o1 = offline.createOscillator();
+      const g1 = offline.createGain();
+      o1.connect(g1); g1.connect(offline.destination);
+      o1.type = 'square';
+      o1.frequency.setValueAtTime(freq, t);
+      g1.gain.setValueAtTime(0.08, t);
+      g1.gain.setValueAtTime(0.08, t + noteDur * 0.75);
+      g1.gain.linearRampToValueAtTime(0.0001, t + noteDur);
+      o1.start(t); o1.stop(t + noteDur);
+
+      // 低八度 triangle 和聲
+      const o2 = offline.createOscillator();
+      const g2 = offline.createGain();
+      o2.connect(g2); g2.connect(offline.destination);
+      o2.type = 'triangle';
+      o2.frequency.setValueAtTime(freq / 2, t);
+      g2.gain.setValueAtTime(0.04, t);
+      g2.gain.linearRampToValueAtTime(0.0001, t + noteDur);
+      o2.start(t); o2.stop(t + noteDur);
+    }
+    t += dur;
+  }
+
+  bgmBuffer = await offline.startRendering();
+}
+
+function startBGM() {
+  if (muted || bgmPlaying || !bgmBuffer) return;
+  const ctx = ac();
+  bgmGain = ctx.createGain();
+  bgmGain.gain.setValueAtTime(1, ctx.currentTime);
+  bgmGain.connect(ctx.destination);
+
+  bgmSource = ctx.createBufferSource();
+  bgmSource.buffer = bgmBuffer;
+  bgmSource.loop   = true;
+  bgmSource.connect(bgmGain);
+  bgmSource.start(ctx.currentTime);
+  bgmPlaying = true;
+}
+
+function stopBGM() {
+  if (!bgmPlaying) return;
+  bgmPlaying = false;
+  try { bgmSource.stop(); } catch(e) {}
+  bgmSource = null;
+}
+
+function toggleMute() {
+  muted = !muted;
+  document.getElementById('mute-btn').textContent = muted ? '🔇 MUTED' : '🔊 SOUND';
+  if (muted) stopBGM();
+  else if (!gameOver && !paused) startBGM();
+}
+
+// ════════════════════════════════════════════
+//  遊戲常數
+// ════════════════════════════════════════════
+const COLS = 10;
+const ROWS = 20;
+const CELL = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--cell')) || 30;
+
+const canvas  = document.getElementById('gameCanvas');
+const ctx2d   = canvas.getContext('2d');
+const nCanvas = document.getElementById('next-canvas');
+const nCtx    = nCanvas.getContext('2d');
+
+canvas.width  = COLS * CELL;
+canvas.height = ROWS * CELL;
+
+// 方塊顏色（高飽和霓虹）
+const COLORS = [
+  null,
+  '#00ffff', // I
+  '#ff9900', // O
+  '#dd00ff', // T
+  '#00ff44', // S
+  '#ff2222', // Z
+  '#2299ff', // J
+  '#ffee00', // L
+  '#ff4444', // 8 = 炸彈佔位（板面用）
+];
+const HI_COLORS = [
+  null,'#aaffff','#ffd080','#ee88ff','#88ffaa','#ff9999','#88ccff','#ffee99','#ff9999',
+];
+const SH_COLORS = [
+  null,'#007799','#885500','#660088','#007722','#880000','#004488','#886600','#991111',
+];
+
+// 方塊形狀
+const SHAPES = [
+  null,
+  [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], // I
+  [[2,2],[2,2]],                               // O
+  [[0,3,0],[3,3,3],[0,0,0]],                   // T
+  [[0,4,4],[4,4,0],[0,0,0]],                   // S
+  [[5,5,0],[0,5,5],[0,0,0]],                   // Z
+  [[6,0,0],[6,6,6],[0,0,0]],                   // J
+  [[0,0,7],[7,7,7],[0,0,0]],                   // L
+];
+
+// 炸彈方塊：2×2，type=8
+const BOMB_SHAPE = [[8,8],[8,8]];
+const BOMB_RADIUS = 3; // 爆炸半徑（格）
+
+// ════════════════════════════════════════════
+//  遊戲狀態
+// ════════════════════════════════════════════
+let board, score, level, lines, gameOver, paused;
+let currentPiece, nextPiece;
+let dropInterval, lastTime, dropCounter;
+let animId;
+let flashRows = [];
+
+// 連擊
+let comboCount   = 0;
+let bonusTimeLeft = 0;
+const BONUS_DUR  = 5000;
+const BONUS_MULT = 2;
+
+// 抖動
+let shakeTimer = 0;
+
+// 道具系統
+let heldItem    = null;  // null | 'bomb'
+let linesForItem = 0;    // 累積行數，每 15 行給道具
+const ITEM_THRESHOLD = 15;
+
+// 爆炸粒子
+let particles = [];
+
+// 爆炸閃光
+let flashWhite = 0; // 0~1，逐漸淡出
+
+function initBoard() {
+  return Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+}
+
+// ════════════════════════════════════════════
+//  方塊物件
+// ════════════════════════════════════════════
+function createPiece(type) {
+  const isBomb = (type === 'bomb');
+  const mat = isBomb
+    ? BOMB_SHAPE.map(r => [...r])
+    : SHAPES[type].map(r => [...r]);
+  return {
+    type,
+    isBomb,
+    matrix: mat,
+    x: Math.floor(COLS / 2) - Math.floor(mat[0].length / 2),
+    y: 0,
+  };
+}
+
+function randomPiece() {
+  return createPiece(Math.floor(Math.random() * 7) + 1);
+}
+
+// ════════════════════════════════════════════
+//  碰撞
+// ════════════════════════════════════════════
+function collides(piece, board, dx = 0, dy = 0, mat = null) {
+  const m = mat || piece.matrix;
+  for (let r = 0; r < m.length; r++) {
+    for (let c = 0; c < m[r].length; c++) {
+      if (!m[r][c]) continue;
+      const nx = piece.x + c + dx;
+      const ny = piece.y + r + dy;
+      if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
+      if (ny >= 0 && board[ny][nx]) return true;
+    }
+  }
+  return false;
+}
+
+// ════════════════════════════════════════════
+//  旋轉（炸彈不旋轉）
+// ════════════════════════════════════════════
+function rotate(matrix) {
+  const N = matrix.length, M = matrix[0].length;
+  const res = Array.from({ length: M }, () => Array(N).fill(0));
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < M; c++)
+      res[c][N - 1 - r] = matrix[r][c];
+  return res;
+}
+
+function tryRotate() {
+  if (currentPiece.isBomb) return;
+  const rotated = rotate(currentPiece.matrix);
+  for (const kick of [0, 1, -1, 2, -2]) {
+    if (!collides(currentPiece, board, kick, 0, rotated)) {
+      currentPiece.matrix = rotated;
+      currentPiece.x += kick;
+      sfxRotate();
+      return;
+    }
+  }
+}
+
+// ════════════════════════════════════════════
+//  鎖定 & 消行
+// ════════════════════════════════════════════
+function lockPiece() {
+  if (currentPiece.isBomb) {
+    // 炸彈落地 → 爆炸
+    triggerBombExplosion();
+    return;
+  }
+
+  let overflow = false;
+  currentPiece.matrix.forEach((row, r) => {
+    row.forEach((val, c) => {
+      if (!val) return;
+      const y = currentPiece.y + r;
+      const x = currentPiece.x + c;
+      if (y < 0) { overflow = true; return; }
+      board[y][x] = val;
+    });
+  });
+  if (overflow) { endGame(); return; }
+
+  sfxLand();
+  shakeTimer = 100;
+  clearLines();
+  spawnPiece();
+}
+
+const LINE_SCORES = [0, 100, 300, 500, 800];
+
+function clearLines() {
+  const toRemove = [];
+  for (let r = ROWS - 1; r >= 0; r--) {
+    if (board[r].every(c => c !== 0)) toRemove.push(r);
+  }
+  if (!toRemove.length) {
+    endCombo();
+    return;
+  }
+
+  sfxClearLines(toRemove.length);
+  flashRows = [...toRemove];
+
+  setTimeout(() => {
+    toRemove.sort((a, b) => b - a);
+    toRemove.forEach(r => {
+      board.splice(r, 1);
+      board.unshift(Array(COLS).fill(0));
+    });
+
+    const n = toRemove.length;
+    lines += n;
+
+    // ── 道具判斷 ──
+    linesForItem += n;
+    if (linesForItem >= ITEM_THRESHOLD && heldItem === null) {
+      linesForItem -= ITEM_THRESHOLD;
+      giveRandomItem();
+    }
+
+    // 連擊
+    comboCount++;
+    bonusTimeLeft = BONUS_DUR;
+    const mult = comboCount >= 2 ? BONUS_MULT : 1;
+    score += LINE_SCORES[n] * level * mult;
+
+    level = Math.floor(lines / 10) + 1;
+    dropInterval = Math.max(100, 1000 - (level - 1) * 90);
+
+    updateHUD();
+    updateComboUI();
+
+    if (n === 4) showPopup('TETRIS!', '#00ffff');
+    else if (comboCount >= 3) showPopup(`${comboCount}x COMBO!`, '#ffd700');
+    else if (comboCount === 2) showPopup('COMBO!', '#ffd700');
+
+    if (comboCount >= 2) sfxCombo(comboCount);
+    flashRows = [];
+  }, 180);
+}
+
+// ════════════════════════════════════════════
+//  道具系統
+// ════════════════════════════════════════════
+function giveRandomItem() {
+  // 目前只有炸彈，之後可擴充
+  heldItem = 'bomb';
+  sfxItemGet();
+  showPopup('💣 BOMB GET!', '#ff4444');
+  document.getElementById('item-box').classList.remove('hidden');
+  // 重置動畫
+  const icon = document.getElementById('item-icon');
+  icon.style.animation = 'none';
+  void icon.offsetWidth;
+  icon.style.animation = 'itemPop 0.5s ease';
+  document.getElementById('canvas-wrapper').classList.add('bomb-active');
+}
+
+function useItem() {
+  if (!heldItem || gameOver || paused) return;
+  if (heldItem === 'bomb') {
+    // 將下一個方塊換成炸彈，並立即生成
+    heldItem = null;
+    document.getElementById('item-box').classList.add('hidden');
+    document.getElementById('canvas-wrapper').classList.remove('bomb-active');
+    // 把 currentPiece 換成炸彈
+    currentPiece = createPiece('bomb');
+    drawNext();
+  }
+}
+
+// ── 炸彈爆炸邏輯 ──
+function triggerBombExplosion() {
+  // 炸彈中心
+  const cx = currentPiece.x + 1;
+  const cy = currentPiece.y + 1;
+
+  sfxBombExplode();
+  flashWhite = 1.0;
+  shakeTimer = 400;
+
+  // 生成爆炸粒子
+  for (let i = 0; i < 60; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 5;
+    particles.push({
+      x: (cx + 0.5) * CELL,
+      y: (cy + 0.5) * CELL,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 2,
+      life: 1.0,
+      decay: 0.025 + Math.random() * 0.025,
+      size: 3 + Math.random() * 6,
+      color: ['#ff4400','#ff8800','#ffcc00','#ffffff','#ff2222'][Math.floor(Math.random()*5)],
+    });
+  }
+
+  // 炸掉範圍內的格子
+  setTimeout(() => {
+    for (let r = cy - BOMB_RADIUS; r <= cy + BOMB_RADIUS; r++) {
+      for (let c = cx - BOMB_RADIUS; c <= cx + BOMB_RADIUS; c++) {
+        const dist = Math.sqrt((r - cy) ** 2 + (c - cx) ** 2);
+        if (dist <= BOMB_RADIUS && r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+          board[r][c] = 0;
+        }
+      }
+    }
+    score += 300;
+    updateHUD();
+    showPopup('💥 BOOM!', '#ff4444');
+    spawnPiece();
+  }, 60);
+}
+
+// ════════════════════════════════════════════
+//  連擊 UI
+// ════════════════════════════════════════════
+function endCombo() {
+  if (comboCount > 0) {
+    comboCount = 0;
+    bonusTimeLeft = 0;
+    updateComboUI();
+  }
+}
+
+function updateComboUI() {
+  const box  = document.getElementById('combo-box');
+  const val  = document.getElementById('combo-value');
+  const bar  = document.getElementById('bonus-bar');
+  const wrap = document.getElementById('canvas-wrapper');
+
+  if (comboCount >= 2 && bonusTimeLeft > 0) {
+    box.classList.remove('hidden');
+    val.textContent = `x${comboCount}`;
+    val.style.animation = 'none';
+    void val.offsetWidth;
+    val.style.animation = 'comboBounce 0.4s ease';
+    bar.style.width = '100%';
+    if (!wrap.classList.contains('bomb-active'))
+      wrap.classList.add('combo-active');
+  } else {
+    box.classList.add('hidden');
+    if (!wrap.classList.contains('bomb-active'))
+      wrap.classList.remove('combo-active');
+  }
+}
+
+// ════════════════════════════════════════════
+//  中央大字提示
+// ════════════════════════════════════════════
+let popupTimeout = null;
+function showPopup(text, color = '#ffd700') {
+  const el = document.getElementById('center-popup');
+  el.textContent = text;
+  el.style.color = color;
+  el.style.textShadow = `0 0 16px ${color}, 0 0 40px ${color}`;
+  el.classList.remove('show');
+  void el.offsetWidth;
+  el.classList.add('show');
+  clearTimeout(popupTimeout);
+  popupTimeout = setTimeout(() => el.classList.remove('show'), 1400);
+}
+
+// ════════════════════════════════════════════
+//  方塊生成
+// ════════════════════════════════════════════
+function spawnPiece() {
+  currentPiece = nextPiece || randomPiece();
+  nextPiece    = randomPiece();
+  if (collides(currentPiece, board)) { endGame(); return; }
+  drawNext();
+}
+
+// ════════════════════════════════════════════
+//  硬落下
+// ════════════════════════════════════════════
+function hardDrop() {
+  sfxHardDrop();
+  while (!collides(currentPiece, board, 0, 1)) {
+    currentPiece.y++;
+    if (!currentPiece.isBomb) score += 2;
+  }
+  lockPiece();
+  updateHUD();
+}
+
+// ════════════════════════════════════════════
+//  幽靈
+// ════════════════════════════════════════════
+function getGhostY() {
+  let gy = currentPiece.y;
+  while (!collides(currentPiece, board, 0, gy - currentPiece.y + 1)) gy++;
+  return gy;
+}
+
+// ════════════════════════════════════════════
+//  繪圖
+// ════════════════════════════════════════════
+function drawCell(context, x, y, colorIdx, alpha = 1, isGhost = false) {
+  const color   = COLORS[colorIdx] || '#888';
+  const hiColor = HI_COLORS[colorIdx] || '#fff';
+  const shColor = SH_COLORS[colorIdx] || '#000';
+  const px = x * CELL, py = y * CELL, s = CELL;
+
+  context.save();
+  context.globalAlpha = alpha;
+
+  if (isGhost) {
+    context.fillStyle = color;
+    context.globalAlpha = alpha * 0.1;
+    context.fillRect(px, py, s, s);
+    context.globalAlpha = alpha;
+    context.strokeStyle = color;
+    context.lineWidth = 2;
+    context.setLineDash([4, 3]);
+    context.strokeRect(px + 1, py + 1, s - 2, s - 2);
+    context.setLineDash([]);
+  } else {
+    // 主色
+    context.fillStyle = color;
+    context.fillRect(px, py, s, s);
+
+    // 徑向漸層
+    const gr = context.createRadialGradient(
+      px + s * 0.35, py + s * 0.35, 1,
+      px + s * 0.5,  py + s * 0.5,  s * 0.75
+    );
+    gr.addColorStop(0,   'rgba(255,255,255,0.45)');
+    gr.addColorStop(0.5, 'rgba(255,255,255,0.08)');
+    gr.addColorStop(1,   'rgba(0,0,0,0.3)');
+    context.fillStyle = gr;
+    context.fillRect(px, py, s, s);
+
+    // 高光
+    context.fillStyle = hiColor;
+    context.fillRect(px + 2, py + 2, s - 4, 3);
+    context.fillRect(px + 2, py + 2, 3, s - 4);
+
+    // 陰影
+    context.fillStyle = shColor;
+    context.fillRect(px + 3,     py + s - 4, s - 3, 3);
+    context.fillRect(px + s - 4, py + 3,     3, s - 4);
+
+    // 外框
+    context.strokeStyle = 'rgba(0,0,0,0.75)';
+    context.lineWidth = 1;
+    context.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
+
+    // 發光框
+    context.strokeStyle = color;
+    context.lineWidth = 1;
+    context.globalAlpha = alpha * 0.45;
+    context.strokeRect(px - 0.5, py - 0.5, s + 1, s + 1);
+  }
+
+  context.restore();
+}
+
+// 炸彈方塊特殊外觀
+function drawBombCell(context, x, y, alpha = 1, isGhost = false) {
+  const px = x * CELL, py = y * CELL, s = CELL;
+  context.save();
+  context.globalAlpha = alpha;
+
+  if (isGhost) {
+    context.strokeStyle = '#ff4444';
+    context.lineWidth = 2;
+    context.setLineDash([4, 3]);
+    context.strokeRect(px + 1, py + 1, s - 2, s - 2);
+    context.setLineDash([]);
+  } else {
+    // 深紅底
+    context.fillStyle = '#220000';
+    context.fillRect(px, py, s, s);
+
+    // 閃爍脈動圓
+    const pulse = 0.6 + 0.4 * Math.sin(Date.now() / 150);
+    const gr = context.createRadialGradient(
+      px + s * 0.5, py + s * 0.5, 1,
+      px + s * 0.5, py + s * 0.5, s * 0.6
+    );
+    gr.addColorStop(0,         `rgba(255,80,0,${0.9 * pulse})`);
+    gr.addColorStop(0.5,       `rgba(200,20,0,${0.6 * pulse})`);
+    gr.addColorStop(1,         'rgba(0,0,0,0)');
+    context.fillStyle = gr;
+    context.fillRect(px, py, s, s);
+
+    // 炸彈 emoji
+    context.font = `${s * 0.65}px serif`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText('💣', px + s * 0.5, py + s * 0.5 + 1);
+
+    // 紅色外框
+    context.strokeStyle = '#ff4444';
+    context.lineWidth = 2;
+    context.strokeRect(px + 1, py + 1, s - 2, s - 2);
+  }
+  context.restore();
+}
+
+function drawBoard() {
+  const shakeIntensity = shakeTimer > 0 ? (shakeTimer / 400) * 5 : 0;
+  const sx = shakeTimer > 0 ? (Math.random() - 0.5) * shakeIntensity : 0;
+  const sy = shakeTimer > 0 ? (Math.random() - 0.5) * shakeIntensity : 0;
+
+  ctx2d.save();
+  ctx2d.translate(sx, sy);
+  ctx2d.clearRect(-8, -8, canvas.width + 16, canvas.height + 16);
+
+  // 格線
+  ctx2d.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx2d.lineWidth = 1;
+  for (let r = 0; r <= ROWS; r++) {
+    ctx2d.beginPath(); ctx2d.moveTo(0, r * CELL); ctx2d.lineTo(canvas.width, r * CELL); ctx2d.stroke();
+  }
+  for (let c = 0; c <= COLS; c++) {
+    ctx2d.beginPath(); ctx2d.moveTo(c * CELL, 0); ctx2d.lineTo(c * CELL, canvas.height); ctx2d.stroke();
+  }
+
+  // 板面方塊
+  for (let r = 0; r < ROWS; r++) {
+    const isFlash = flashRows.includes(r);
+    for (let c = 0; c < COLS; c++) {
+      if (!board[r][c]) continue;
+      if (isFlash) {
+        ctx2d.fillStyle = (Date.now() % 160) < 80 ? '#ffffff' : COLORS[board[r][c]];
+        ctx2d.fillRect(c * CELL, r * CELL, CELL, CELL);
+      } else {
+        const withGlow = bonusTimeLeft > 0;
+        if (withGlow) {
+          ctx2d.save();
+          ctx2d.shadowColor = COLORS[board[r][c]];
+          ctx2d.shadowBlur  = 7;
+        }
+        drawCell(ctx2d, c, r, board[r][c]);
+        if (withGlow) ctx2d.restore();
+      }
+    }
+  }
+
+  ctx2d.restore();
+
+  // 粒子（不受抖動影響）
+  drawParticles();
+
+  // 爆炸閃白
+  if (flashWhite > 0) {
+    ctx2d.save();
+    ctx2d.globalAlpha = flashWhite * 0.7;
+    ctx2d.fillStyle = '#ffffff';
+    ctx2d.fillRect(0, 0, canvas.width, canvas.height);
+    ctx2d.restore();
+    flashWhite = Math.max(0, flashWhite - 0.05);
+  }
+}
+
+function drawPiece() {
+  if (!currentPiece) return;
+
+  const gy = getGhostY();
+
+  if (currentPiece.isBomb) {
+    // 幽靈
+    if (gy !== currentPiece.y) {
+      currentPiece.matrix.forEach((row, r) => {
+        row.forEach((val, c) => {
+          if (val) drawBombCell(ctx2d, currentPiece.x + c, gy + r, 0.4, true);
+        });
+      });
+    }
+    // 本體
+    currentPiece.matrix.forEach((row, r) => {
+      row.forEach((val, c) => {
+        if (val) drawBombCell(ctx2d, currentPiece.x + c, currentPiece.y + r);
+      });
+    });
+  } else {
+    // 幽靈
+    if (gy !== currentPiece.y) {
+      currentPiece.matrix.forEach((row, r) => {
+        row.forEach((val, c) => {
+          if (val) drawCell(ctx2d, currentPiece.x + c, gy + r, val, 0.5, true);
+        });
+      });
+    }
+    // 本體
+    ctx2d.save();
+    if (bonusTimeLeft > 0) {
+      ctx2d.shadowColor = COLORS[currentPiece.type];
+      ctx2d.shadowBlur  = 18;
+    }
+    currentPiece.matrix.forEach((row, r) => {
+      row.forEach((val, c) => {
+        if (val) drawCell(ctx2d, currentPiece.x + c, currentPiece.y + r, val);
+      });
+    });
+    ctx2d.restore();
+  }
+}
+
+// NEXT 預覽
+function drawNext() {
+  nCtx.clearRect(0, 0, nCanvas.width, nCanvas.height);
+  if (!nextPiece) return;
+
+  if (nextPiece.isBomb) {
+    nCtx.font = '2rem serif';
+    nCtx.textAlign = 'center';
+    nCtx.textBaseline = 'middle';
+    nCtx.fillText('💣', nCanvas.width / 2, nCanvas.height / 2);
+    return;
+  }
+
+  const m = nextPiece.matrix;
+  const cs = 20;
+  const ox = Math.floor((nCanvas.width  - m[0].length * cs) / 2);
+  const oy = Math.floor((nCanvas.height - m.length    * cs) / 2);
+
+  m.forEach((row, r) => {
+    row.forEach((val, c) => {
+      if (!val) return;
+      const color = COLORS[val];
+      const px = ox + c * cs, py = oy + r * cs;
+      nCtx.fillStyle = color;
+      nCtx.fillRect(px, py, cs, cs);
+      nCtx.fillStyle = HI_COLORS[val];
+      nCtx.fillRect(px + 1, py + 1, cs - 2, 2);
+      nCtx.fillRect(px + 1, py + 1, 2, cs - 2);
+      nCtx.strokeStyle = 'rgba(0,0,0,0.6)';
+      nCtx.lineWidth = 1;
+      nCtx.strokeRect(px, py, cs, cs);
+    });
+  });
+}
+
+// ════════════════════════════════════════════
+//  粒子系統
+// ════════════════════════════════════════════
+function updateParticles(delta) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x    += p.vx * (delta / 16);
+    p.y    += p.vy * (delta / 16);
+    p.vy   += 0.18 * (delta / 16); // 重力
+    p.vx   *= 0.98;
+    p.life -= p.decay * (delta / 16);
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx2d.save();
+    ctx2d.globalAlpha = Math.max(0, p.life);
+    ctx2d.fillStyle = p.color;
+    ctx2d.shadowColor = p.color;
+    ctx2d.shadowBlur = 6;
+    ctx2d.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    ctx2d.restore();
+  }
+}
+
+// ════════════════════════════════════════════
+//  HUD
+// ════════════════════════════════════════════
+function updateHUD() {
+  document.getElementById('score-display').textContent = score;
+  document.getElementById('level-display').textContent = level;
+  document.getElementById('lines-display').textContent = lines;
+}
+
+// ════════════════════════════════════════════
+//  遊戲主循環
+// ════════════════════════════════════════════
+function gameLoop(timestamp) {
+  if (gameOver || paused) return;
+
+  const delta = timestamp - (lastTime || timestamp);
+  lastTime = timestamp;
+
+  if (shakeTimer > 0) shakeTimer = Math.max(0, shakeTimer - delta);
+
+  if (bonusTimeLeft > 0) {
+    bonusTimeLeft = Math.max(0, bonusTimeLeft - delta);
+    document.getElementById('bonus-bar').style.width =
+      (bonusTimeLeft / BONUS_DUR * 100) + '%';
+    if (bonusTimeLeft === 0) { comboCount = 0; updateComboUI(); }
+  }
+
+  updateParticles(delta);
+
+  dropCounter += delta;
+  if (dropCounter >= dropInterval) {
+    dropCounter = 0;
+    if (!collides(currentPiece, board, 0, 1)) {
+      currentPiece.y++;
+    } else {
+      lockPiece();
+      updateHUD();
+    }
+  }
+
+  drawBoard();
+  drawPiece();
+
+  animId = requestAnimationFrame(gameLoop);
+}
+
+// ════════════════════════════════════════════
+//  遊戲控制
+// ════════════════════════════════════════════
+function startGame() {
+  board         = initBoard();
+  score         = 0; level = 1; lines = 0;
+  dropInterval  = 1000;
+  dropCounter   = 0;
+  lastTime      = 0;
+  gameOver      = false;
+  paused        = false;
+  flashRows     = [];
+  comboCount    = 0;
+  bonusTimeLeft = 0;
+  shakeTimer    = 0;
+  heldItem      = null;
+  linesForItem  = 0;
+  particles     = [];
+  flashWhite    = 0;
+
+  document.getElementById('overlay').classList.add('hidden');
+  document.getElementById('pause-btn').textContent = '⏸ PAUSE';
+  document.getElementById('combo-box').classList.add('hidden');
+  document.getElementById('item-box').classList.add('hidden');
+  document.getElementById('canvas-wrapper').classList.remove('combo-active','bomb-active');
+
+  updateHUD();
+  nextPiece = randomPiece();
+  spawnPiece();
+
+  cancelAnimationFrame(animId);
+  animId = requestAnimationFrame(gameLoop);
+  startBGM();
+}
+
+function endGame() {
+  gameOver = true;
+  cancelAnimationFrame(animId);
+  stopBGM();
+  sfxGameOver();
+
+  document.getElementById('overlay-title').textContent = 'GAME OVER';
+  document.getElementById('overlay-score').textContent = `SCORE: ${score}`;
+  document.getElementById('overlay-btn').textContent   = '▶ RETRY';
+  document.getElementById('overlay').classList.remove('hidden');
+}
+
+function togglePause() {
+  if (gameOver) return;
+  paused = !paused;
+  document.getElementById('pause-btn').textContent = paused ? '▶ RESUME' : '⏸ PAUSE';
+  if (paused) { stopBGM(); }
+  else { lastTime = 0; startBGM(); animId = requestAnimationFrame(gameLoop); }
+}
+
+// ════════════════════════════════════════════
+//  鍵盤
+// ════════════════════════════════════════════
+document.addEventListener('keydown', e => {
+  if (e.code === 'KeyP') { togglePause(); return; }
+  if (e.code === 'KeyM') { toggleMute();  return; }
+  if (e.code === 'KeyE') { useItem();     return; } // E 鍵使用道具
+  if (gameOver || paused) return;
+
+  switch (e.code) {
+    case 'ArrowLeft':
+      if (!collides(currentPiece, board, -1, 0)) { currentPiece.x--; sfxMove(); }
+      break;
+    case 'ArrowRight':
+      if (!collides(currentPiece, board,  1, 0)) { currentPiece.x++; sfxMove(); }
+      break;
+    case 'ArrowDown':
+      if (!collides(currentPiece, board, 0, 1)) {
+        currentPiece.y++;
+        if (!currentPiece.isBomb) score += 1;
+        updateHUD();
+      }
+      break;
+    case 'ArrowUp':
+      tryRotate();
+      break;
+    case 'Space':
+      e.preventDefault();
+      hardDrop();
+      break;
+  }
+});
+
+// ════════════════════════════════════════════
+//  觸控
+// ════════════════════════════════════════════
+function setupTouch() {
+  let downInterval = null;
+  document.getElementById('btn-left').addEventListener('click', () => {
+    if (!gameOver && !paused && !collides(currentPiece, board, -1, 0)) { currentPiece.x--; sfxMove(); }
+  });
+  document.getElementById('btn-right').addEventListener('click', () => {
+    if (!gameOver && !paused && !collides(currentPiece, board,  1, 0)) { currentPiece.x++; sfxMove(); }
+  });
+  document.getElementById('btn-rotate').addEventListener('click', () => {
+    if (!gameOver && !paused) tryRotate();
+  });
+  document.getElementById('btn-drop').addEventListener('click', () => {
+    if (!gameOver && !paused) { hardDrop(); updateHUD(); }
+  });
+  const downBtn = document.getElementById('btn-down');
+  downBtn.addEventListener('touchstart', e => {
+    e.preventDefault();
+    if (downInterval) return;
+    downInterval = setInterval(() => {
+      if (!gameOver && !paused && !collides(currentPiece, board, 0, 1)) {
+        currentPiece.y++; score++; updateHUD();
+      }
+    }, 80);
+  });
+  downBtn.addEventListener('touchend', () => { clearInterval(downInterval); downInterval = null; });
+  downBtn.addEventListener('click', () => {
+    if (!gameOver && !paused && !collides(currentPiece, board, 0, 1)) {
+      currentPiece.y++; score++; updateHUD();
+    }
+  });
+}
+setupTouch();
+
+// ════════════════════════════════════════════
+//  初始化：預渲染 BGM 後才允許開始
+// ════════════════════════════════════════════
+(async () => {
+  try {
+    await buildBGMBuffer();
+  } catch(e) {
+    console.warn('BGM 預渲染失敗', e);
+  }
+})();
+</script>
+</body>
+</html>
